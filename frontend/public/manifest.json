@@ -1,0 +1,17 @@
+{
+  "name": "Sika Bank",
+  "short_name": "Sika",
+  "description": "Digital Susu circles with mobile money integration",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F8FAFC",
+  "theme_color": "#D4A017",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

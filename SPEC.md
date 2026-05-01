@@ -1,4 +1,4 @@
-# Sika Bank — Family Vault (Susu Circles)
+# Sika Bank — Family Vault SPEC
 
 ## Problem
 West Africans save in groups (Susu, Ajo, Esusu) — rotating savings clubs where 10-20 people pool money monthly, one person takes the pot each cycle. No digital equivalent exists that understands the cultural trust dynamics.

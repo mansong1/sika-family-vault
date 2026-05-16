@@ -24,7 +24,7 @@ export default function CirclesPage() {
 
   useEffect(() => {
     api.getCircles().then((c) => {
-      setCircles(c);
+      setCircles(c as Circle[]);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);

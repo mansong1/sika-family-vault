@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import RoundUpWidget from "@/components/RoundUpWidget";
 
 interface DashboardData {
   user_id: string;
@@ -20,7 +21,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     api.getDashboard().then((d) => {
-      setData(d);
+      setData(d as DashboardData);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
@@ -67,6 +68,9 @@ export default function Dashboard() {
           </div>
         </motion.div>
 
+        {/* Round-Up Widget */}
+        <RoundUpWidget />
+
         {/* Quick Stats */}
         <div className="grid grid-cols-2 gap-4">
           <motion.div
@@ -92,27 +96,6 @@ export default function Dashboard() {
             </div>
           </motion.div>
         </div>
-
-        {/* Round-Up */}
-        {data.roundup_accumulated > 0 && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="bg-sika-gold/5 rounded-2xl p-5 border border-sika-gold/20"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-sika-gold/20 flex items-center justify-center">
-                <span className="text-lg">🪙</span>
-              </div>
-              <div>
-                <div className="text-sm font-medium text-sika-slate-700">Auto Round-Up</div>
-                <div className="text-sm text-sika-slate-500">
-                  GHS {data.roundup_accumulated.toFixed(2)} saved from spare change
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
 
         {/* Upcoming Payments */}
         {data.upcoming_payments.length > 0 && (

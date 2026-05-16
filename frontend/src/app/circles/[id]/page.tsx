@@ -33,7 +33,7 @@ export default function CircleDetailPage() {
 
   useEffect(() => {
     api.getCircle(circleId).then((c) => {
-      setCircle(c);
+      setCircle(c as CircleDetail);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [circleId]);
@@ -173,7 +173,7 @@ export default function CircleDetailPage() {
             onClose={() => setShowPayment(false)}
             onSuccess={() => {
               setShowPayment(false);
-              api.getCircle(circleId).then(setCircle);
+              api.getCircle(circleId).then((c) => setCircle(c as CircleDetail));
             }}
           />
         )}

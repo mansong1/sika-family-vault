@@ -4,7 +4,7 @@ interface RequestOptions extends RequestInit {
   body?: any;
 }
 
-async function apiFetch(endpoint: string, options: RequestOptions = {}) {
+export async function apiFetch<T = unknown>(endpoint: string, options: RequestOptions = {}): Promise<T> {
   const url = `${API_URL}${endpoint}`;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -44,8 +44,54 @@ export const api = {
 
   // Dashboard
   getDashboard: () => apiFetch("/api/v1/dashboard"),
+
+  // Credit
   getCreditScore: () => apiFetch("/api/v1/credit-score"),
+
+  // Legacy roundup (keep for dashboard endpoint)
   getRoundup: () => apiFetch("/api/v1/roundup"),
   createRoundup: (data: { round_to: number; active: boolean }) =>
     apiFetch("/api/v1/roundup", { method: "POST", body: { ...data, user_id: "" } }),
+
+  // New Round-Up Engine
+  roundUp: {
+    createRule: (data: {
+      circle_id: string;
+      round_to?: number;
+      multiplier?: number;
+      floor_amount?: number;
+      weekly_cap?: number;
+      allocation_pct?: number;
+    }) =>
+      apiFetch("/round-up/rules", { method: "POST", body: { ...data, user_id: "" } }),
+
+    getRules: () =>
+      apiFetch<{ rules: unknown }>("/round-up/rules").then((d) => d.rules),
+
+    updateRule: (ruleId: string, data: Record<string, unknown>) =>
+      apiFetch(`/round-up/rules/${ruleId}`, { method: "PATCH", body: data }),
+
+    deleteRule: (ruleId: string) =>
+      apiFetch(`/round-up/rules/${ruleId}`, { method: "DELETE" }),
+
+    getTransactions: (circleId?: string) =>
+      apiFetch<{ transactions: unknown }>(`/round-up/transactions${circleId ? `?circle_id=${circleId}` : ""}`).then(
+        (d) => d.transactions
+      ),
+
+    simulate: (purchaseAmount: number, circleId: string) =>
+      apiFetch("/round-up/simulate", {
+        method: "POST",
+        body: { purchase_amount: purchaseAmount, circle_id: circleId },
+      }),
+
+    triggerSweep: (purchaseAmount: number, circleId: string) =>
+      apiFetch("/round-up/sweep", {
+        method: "POST",
+        body: { purchase_amount: purchaseAmount, circle_id: circleId },
+      }),
+
+    getCircleStats: (circleId: string) =>
+      apiFetch(`/round-up/circle-stats/${circleId}`),
+  },
 };

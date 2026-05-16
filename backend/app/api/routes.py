@@ -5,10 +5,18 @@ from datetime import datetime, timezone, timedelta
 import uuid
 
 from ..models.susu import (
-    SusuCircleCreate, SusuStatus, PaymentCreate, CreditScore, RoundUpRule, UserCreate, Token, LoginRequest
+    SusuCircleCreate, SusuStatus, PaymentCreate, CreditScore, UserCreate, Token, LoginRequest
+)
+from ..models.round_up import (
+    RoundUpRuleCreate, RoundUpRuleUpdate, RoundUpSweepRequest,
+    RoundUpSimulateRequest, CircleRoundUpStats,
 )
 from ..services.susu_service import store
+from ..services.round_up_service import RoundUpEngine
 from ..core.security import create_access_token, verify_password, get_password_hash
+
+# Initialize round-up engine
+roundup_engine = RoundUpEngine(store)
 
 router = APIRouter(prefix="/api/v1", tags=["susu"])
 security = HTTPBearer(auto_error=False)
@@ -208,31 +216,146 @@ def _get_score_rating(score: int) -> str:
         return "Average"
     return "Poor"
 
-@router.post("/roundup", response_model=dict)
-async def create_roundup_rule(rule: RoundUpRule, user: dict = Depends(get_current_user)):
-    store.roundup_rules[user["id"]] = rule
+# ═══════════════════════════════════════════════════════════
+# Auto Round-Up Endpoints
+# ═══════════════════════════════════════════════════════════
+
+@router.post("/round-up/rules", response_model=dict)
+async def create_roundup_rule(data: RoundUpRuleCreate, user: dict = Depends(get_current_user)):
+    """Create a new round-up rule for a Susu circle"""
+    data.user_id = user["id"]
+    rule = roundup_engine.create_rule(data)
     return {
-        "message": "Round-up rule created",
+        "rule_id": rule.rule_id,
+        "circle_id": rule.circle_id,
         "round_to": rule.round_to,
-        "active": rule.active
+        "multiplier": rule.multiplier,
+        "active": rule.active,
+        "message": "Round-up rule created",
     }
 
-@router.get("/roundup", response_model=dict)
-async def get_roundup_rule(user: dict = Depends(get_current_user)):
-    rule = store.roundup_rules.get(user["id"])
-    if not rule:
-        return {"active": False, "total_accumulated": 0.0}
+
+@router.get("/round-up/rules", response_model=dict)
+async def get_roundup_rules(user: dict = Depends(get_current_user)):
+    """Get all round-up rules for the current user"""
+    rules = roundup_engine.get_user_rules(user["id"])
     return {
-        "active": rule.active,
-        "round_to": rule.round_to,
-        "total_accumulated": rule.total_accumulated
+        "rules": [
+            {
+                "rule_id": r.rule_id,
+                "circle_id": r.circle_id,
+                "active": r.active,
+                "paused": r.is_paused(),
+                "paused_until": r.paused_until.isoformat() if r.paused_until else None,
+                "round_to": r.round_to,
+                "multiplier": r.multiplier,
+                "floor_amount": r.floor_amount,
+                "weekly_cap": r.weekly_cap,
+                "allocation_pct": r.allocation_pct,
+                "total_accumulated": r.total_accumulated,
+                "created_at": r.created_at.isoformat(),
+            }
+            for r in rules
+        ]
+    }
+
+
+@router.patch("/round-up/rules/{rule_id}", response_model=dict)
+async def update_roundup_rule(
+    rule_id: str, data: RoundUpRuleUpdate, user: dict = Depends(get_current_user)
+):
+    """Update a round-up rule (toggle, pause, change multiplier, etc.)"""
+    rule = roundup_engine.get_rule(rule_id)
+    if not rule or rule.user_id != user["id"]:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    
+    updated = roundup_engine.update_rule(rule_id, data)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    
+    return {
+        "rule_id": updated.rule_id,
+        "active": updated.active,
+        "paused": updated.is_paused(),
+        "multiplier": updated.multiplier,
+        "round_to": updated.round_to,
+        "message": "Rule updated",
+    }
+
+
+@router.delete("/round-up/rules/{rule_id}", response_model=dict)
+async def delete_roundup_rule(rule_id: str, user: dict = Depends(get_current_user)):
+    """Delete a round-up rule"""
+    rule = roundup_engine.get_rule(rule_id)
+    if not rule or rule.user_id != user["id"]:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    
+    roundup_engine.delete_rule(rule_id)
+    return {"message": "Rule deleted", "rule_id": rule_id}
+
+
+@router.get("/round-up/transactions", response_model=dict)
+async def get_roundup_transactions(
+    circle_id: str = None, user: dict = Depends(get_current_user)
+):
+    """Get round-up transaction history, optionally filtered by circle"""
+    txns = roundup_engine.get_transactions(user["id"], circle_id)
+    return {
+        "transactions": [
+            {
+                "id": t.id,
+                "circle_id": t.circle_id,
+                "purchase_amount": t.purchase_amount,
+                "rounded_amount": t.rounded_amount,
+                "spare_change": t.spare_change,
+                "multiplier": t.multiplier_applied,
+                "swept_at": t.swept_at.isoformat(),
+                "source_tx_id": t.source_tx_id,
+            }
+            for t in txns
+        ]
+    }
+
+
+@router.post("/round-up/simulate", response_model=dict)
+async def simulate_roundup(data: RoundUpSimulateRequest, user: dict = Depends(get_current_user)):
+    """Simulate a round-up without executing it"""
+    result = roundup_engine.simulate(user["id"], data.purchase_amount, data.circle_id)
+    return result
+
+
+@router.post("/round-up/sweep", response_model=dict)
+async def trigger_sweep(data: RoundUpSweepRequest, user: dict = Depends(get_current_user)):
+    """Manually trigger a round-up sweep (for demo/testing)"""
+    result = roundup_engine.process_purchase(
+        user["id"], data.purchase_amount, data.circle_id
+    )
+    return result
+
+
+@router.get("/round-up/circle-stats/{circle_id}", response_model=dict)
+async def get_circle_roundup_stats(circle_id: str, user: dict = Depends(get_current_user)):
+    """Get aggregate round-up statistics for a Susu circle"""
+    circle = store.circles.get(circle_id)
+    if not circle:
+        raise HTTPException(status_code=404, detail="Circle not found")
+    
+    stats = roundup_engine.get_circle_stats(circle_id)
+    return {
+        "circle_id": stats.circle_id,
+        "circle_name": stats.circle_name,
+        "total_spare_change": stats.total_spare_change,
+        "total_sweeps": stats.total_sweeps,
+        "member_leaderboard": stats.member_leaderboard,
+        "recent_sweeps": stats.recent_sweeps,
     }
 
 @router.get("/dashboard", response_model=dict)
 async def get_dashboard(user: dict = Depends(get_current_user)):
     circles = store.get_user_circles(user["id"])
     cs = store.get_credit_score(user["id"])
-    rule = store.roundup_rules.get(user["id"])
+    all_roundup_rules = roundup_engine.get_user_rules(user["id"])
+    total_roundup = sum(r.total_accumulated for r in all_roundup_rules)
     
     active_circles = [c for c in circles if c.status == SusuStatus.ACTIVE]
     pending_circles = [c for c in circles if c.status == SusuStatus.PENDING]
@@ -249,7 +372,7 @@ async def get_dashboard(user: dict = Depends(get_current_user)):
             "total": len(circles)
         },
         "total_saved": sum(c.total_collected for c in circles),
-        "roundup_accumulated": rule.total_accumulated if rule else 0.0,
+        "roundup_accumulated": total_roundup,
         "upcoming_payments": [
             {
                 "circle_name": c.name,

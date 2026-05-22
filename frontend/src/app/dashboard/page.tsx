@@ -41,13 +41,17 @@ export default function Dashboard() {
 
       <main className="max-w-lg mx-auto px-6 py-8 space-y-8">
         {/* Credit Score Card */}
+        <Link href="/credit-score">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl p-6 shadow-sm border border-sika-slate-200"
+          className="bg-white rounded-2xl p-6 shadow-sm border border-sika-slate-200 hover:border-sika-gold/30 transition-colors cursor-pointer group"
         >
           <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-sika-slate-500">Credit Score</span>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-sika-slate-500">SusuScore™</span>
+              <span className="text-[10px] uppercase tracking-wider text-sika-gold bg-sika-gold/10 px-1.5 py-0.5 rounded">NEW</span>
+            </div>
             <span className="text-xs bg-sika-gold/10 text-sika-gold-dark px-2 py-1 rounded-full">
               {data.credit_score.rating}
             </span>
@@ -57,6 +61,7 @@ export default function Dashboard() {
               {data.credit_score.score}
             </span>
             <span className="text-sm text-sika-slate-400 mb-2">/ 850</span>
+            <span className="text-sika-slate-300 mb-2 ml-auto group-hover:translate-x-0.5 transition-transform">→</span>
           </div>
           <div className="mt-4 h-2 bg-sika-slate-100 rounded-full overflow-hidden">
             <motion.div
@@ -67,6 +72,7 @@ export default function Dashboard() {
             />
           </div>
         </motion.div>
+        </Link>
 
         {/* Round-Up Widget */}
         <RoundUpWidget />

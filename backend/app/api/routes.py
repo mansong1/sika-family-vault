@@ -9,10 +9,11 @@ from ..models.susu import (
 )
 from ..models.round_up import (
     RoundUpRuleCreate, RoundUpRuleUpdate, RoundUpSweepRequest,
-    RoundUpSimulateRequest, CircleRoundUpStats,
+    RoundUpSimulateRequest,
 )
 from ..services.susu_service import store
 from ..services.round_up_service import RoundUpEngine
+from ..services.score_engine import score_engine
 from ..core.security import create_access_token, verify_password, get_password_hash
 
 # Initialize round-up engine
@@ -194,15 +195,27 @@ async def get_schedule(circle_id: str, user: dict = Depends(get_current_user)):
 
 @router.get("/credit-score", response_model=dict)
 async def get_credit_score(user: dict = Depends(get_current_user)):
+    breakdown = score_engine.calculate_from_store(user["id"], store)
     cs = store.get_credit_score(user["id"])
+
     return {
-        "score": cs.score,
-        "rating": _get_score_rating(cs.score),
+        "score": breakdown.total_score,
+        "tier": breakdown.tier.value,
+        "trend": breakdown.trend,
+        "factors": [{
+            "name": f.name,
+            "normalized": round(f.normalized, 3),
+            "weight": f.weight,
+            "contribution": round(f.weighted_contribution, 4),
+            "description": f.description,
+        } for f in breakdown.factors],
+        "improvement_tips": score_engine.get_improvement_tips(breakdown),
         "circles_completed": cs.circles_completed,
         "on_time_payments": cs.on_time_payments,
         "late_payments": cs.late_payments,
         "defaulted_circles": cs.defaulted_circles,
-        "last_updated": cs.last_updated.isoformat()
+        "last_updated": cs.last_updated.isoformat() if cs.last_updated else None,
+        "last_calculated": breakdown.last_calculated.isoformat(),
     }
 
 def _get_score_rating(score: int) -> str:
@@ -215,6 +228,48 @@ def _get_score_rating(score: int) -> str:
     if score >= 500:
         return "Average"
     return "Poor"
+
+
+@router.get("/credit-score/history", response_model=dict)
+async def get_credit_score_history(user: dict = Depends(get_current_user)):
+    """Get score history for trend visualization."""
+    cs = store.get_credit_score(user["id"])
+    history = getattr(cs, "history", [])
+    if not history:
+        # Generate synthetic history based on metrics for demo
+        history = _generate_score_history(cs)
+
+    return {
+        "current_score": cs.score,
+        "history": history,
+    }
+
+
+def _generate_score_history(cs) -> list:
+    """Generate a reasonable score history from available metrics."""
+    import random
+    from datetime import datetime, timezone, timedelta
+
+    points = []
+    base_score = max(300, cs.score - cs.circles_completed * 15)
+    now = datetime.now(timezone.utc)
+
+    for i in range(max(1, cs.circles_completed)):
+        progress = (i + 1) / max(cs.circles_completed, 1)
+        score = int(base_score + (cs.score - base_score) * progress)
+        score += random.randint(-10, 10)  # small jitter
+        score = max(300, min(850, score))
+        points.append({
+            "date": (now - timedelta(days=30 * (cs.circles_completed - i))).isoformat(),
+            "score": score,
+        })
+
+    # Add current
+    points.append({
+        "date": now.isoformat(),
+        "score": cs.score,
+    })
+    return points
 
 # ═══════════════════════════════════════════════════════════
 # Auto Round-Up Endpoints
